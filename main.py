@@ -2,12 +2,17 @@ import numpy as np
 
 
 class Refmap:
-    def __init__(self, nn, ii, l, v=True):
+    def __init__(self, nn, ii, io, l, v=True):
         """An individual level's refinement map, accessed through
         refmap.
 
-        :param nn: (array, ints) extent of the level
-        :param ii: (array, ints) origin of the level
+        :param nn: (array, ints) extent of the level, in this level's
+            cells
+        :param ii: (array, ints) offset of the origin of the level, in
+            this level's cells
+        :param io: (array, ints) offset of the origin of the level
+            relative to the next coarser level, in the coarser level's
+            cells
         :param l: (int) ilevel
         :param v: (bool) verbose
 
@@ -17,9 +22,18 @@ class Refmap:
         """
         self.nn = nn
         self.ii = ii
+        self.io = io
         self.l = l
         self.v = v
+        
+        assert(self.l > 0), self.l
+        assert(np.all(self.nn > 0)), self.nn
+        assert(np.all(self.ii >= 0)), self.ii
+        assert(np.all(self.io >= 0)), self.io
 
+        # Initialise empty dict for the cosmo
+        self.cosmo = {}
+        
         # Check the origin
         self.set_origin()
 
@@ -64,6 +78,10 @@ class Refmap:
         
         self.refmap = np.zeros(shape=(self.nn[0], self.nn[1], self.nn[2]),
                                dtype=np.float32)
+
+
+    def set_cosmo(self, cosmo):
+        self.cosmo = cosmo
         
 
 class Hierarchy:
@@ -77,7 +95,8 @@ class Hierarchy:
             grid cells
         :param nn: (array, ints) extent of the finest grid, in fine
             grid cells
-        :param pad: (int) padding of each level, in ilevel cells
+        :param pad: (int) padding of each level on each side, in
+            ilevel cells
         :param v: (bool) verbose
 
         :returns:
@@ -86,9 +105,10 @@ class Hierarchy:
         """
         self.lmin = levelmin
         self.lmax = levelmax
+        self.nl = self.lmax - self.lmin + 1
         self.ii_fine = ii  # start with finest
         self.nn_fine = nn  # start with finest
-        self.pad = 4  # per side
+        self.pad = pad     # per side
         self.v = v
 
         self.set_hierarchy()
@@ -104,12 +124,16 @@ class Hierarchy:
         """
         self.h = []
 
+        # Initially set the relative offsets to some dummy value,
+        # we'll go back and update these after building the hierarchy
+        _io_coarse = np.array([0, 0, 0])
+        
         # Do down to, but not including levelmin
-        for il in range(self.lmax, self.lmin, -1):
+        for ll in range(self.lmax, self.lmin, -1):
             # Prepend each Refmap, so that they are ordered from
             # smallest to largest
-            self.h.insert(0, Refmap(self.nn_fine, self.ii_fine, il,
-                                    v=self.v))
+            self.h.insert(0, Refmap(nn=self.nn_fine, ii=self.ii_fine,
+                                    io=_io_coarse, l=ll, v=self.v))
 
             # Update nn_fine and ii_fine for the next level
             _nn_fine = self.nn_fine // 2
@@ -125,8 +149,17 @@ class Hierarchy:
         _nn_fine = 2 ** self.lmin
         self.nn_fine = np.array([_nn_fine, _nn_fine, _nn_fine])
         self.ii_fine = np.array([0, 0, 0])
-        self.h.insert(0, Refmap(self.nn_fine, self.ii_fine, self.lmin,
-                                v=self.v))
+        self.h.insert(0, Refmap(nn=self.nn_fine, ii=self.ii_fine,
+                                io=_io_coarse, l=self.lmin, v=self.v))
 
-        
-            
+        # Now do a forward sweep to calculate the relative offsets
+        # between levels, levelmin has a relative offset of zero, so
+        # we can start from lmin+1
+        for il in range(1, self.nl):
+            # level il absolute offset in coarse cells - level il-1
+            # absolute offset in coarse cells gives relative offset
+            # between il and il-1 in coarse (il-1) cells
+            _io_coarse = (self.h[il].ii // 2) - self.h[il-1].ii
+
+            # Update the relative offset
+            self.h[il].io = _io_coarse
