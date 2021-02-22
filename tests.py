@@ -1,8 +1,19 @@
 import numpy as np
 
+
+def print_info(function):
+    def wrapper():
+        fn = function.__name__
+        print('---- testing {0}'.format(fn))
+        function()
+        print('---- passed {0}'.format(fn))
+
+    return wrapper
+
+
+@print_info
 def build_refmap():
-    from main import Refmap
-    print('---- testing refmap building')
+    from grid import Refmap
     nn = np.array([64, 64, 64])
     ii = np.array([0, 0, 0])
     io = np.array([0, 0, 0])
@@ -12,12 +23,11 @@ def build_refmap():
 
     assert(np.all(m.nn == nn))
     assert(np.all(m.refmap.shape == nn))
-    print('---- passed refmap building')
 
-    
+
+@print_info
 def shift_origin():
-    from main import Refmap
-    print('---- testing origin shifting')
+    from grid import Refmap
     nn = np.array([64, 64, 64])
     ii = np.array([0, 0, 0])
     io = np.array([0, 0, 0])
@@ -32,12 +42,11 @@ def shift_origin():
 
     # Should change
     assert(np.all(m.ii == np.array([12, 4, 36]))), m.ii
-    print('---- passed origin shifting')
 
 
+@print_info
 def build_hierarchy():
-    from main import Hierarchy
-    print('---- testing hierarchy building')
+    from grid import Hierarchy
     lmin = 5
     lmax = 7
     ii = np.array([48, 48, 48])  # Should be even
@@ -58,17 +67,16 @@ def build_hierarchy():
     for i in range(lmax - lmin, 0, -1):
         assert(np.all(h.h[i].nn == _nn)), h.h[i].nn
         _nn = (_nn // 2) + (2 * pad)
-    print('---- passed hierarchy building')
 
 
 def update_rel_offset():
     pass
 
 
+@print_info
 def write_fields():
-    from main import Hierarchy
+    from grid import Hierarchy
     from grafic_io import write_field
-    print('---- testing hierarchy building')
     lmin = 5
     lmax = 7
     ii = np.array([48, 48, 48])  # Should be even
@@ -86,6 +94,28 @@ def write_fields():
             write_field(field, h.h[level-lmin], h.h[level-lmin].refmap, level)
 
 
+@print_info
+def run_iters():
+    from grid import Hierarchy
+    
+    lmin = 5
+    lmax = 7
+    ii = np.array([48, 48, 48])  # Should be even
+    nn = np.array([8, 8, 8])  # Should be divisible to an even number lmin - lmax times
+    pad = 4
+
+    nl = lmax - lmin + 1
+    
+    h = Hierarchy(lmin, lmax, ii, nn)
+
+    for i, il in enumerate(h.il_it):
+        assert(il == i)
+
+    for i, il in enumerate(h.il_itr):
+        assert(il == nl-1-i)
+
+
+            
 if __name__ == '__main__':
     print('-- running tests')
     
@@ -93,3 +123,4 @@ if __name__ == '__main__':
     shift_origin()
     build_hierarchy()
     write_fields()
+    run_iters()
